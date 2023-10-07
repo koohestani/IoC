@@ -1,0 +1,15 @@
+{
+  BasedOnStyle: WebKit,
+  IndentWidth: 4,
+  TabWidth: 4,
+  UseTab: Never,
+  BreakBeforeBraces: Allman,
+  AllowShortIfStatementsOnASingleLine: true,
+  IndentCaseLabels: false,
+  ColumnLimit: 120,
+  MaxEmptyLinesToKeep: 1,
+  NamespaceIndentation: None,
+  AllowShortFunctionsOnASingleLine: true,
+  AlwaysBreakTemplateDeclarations: Yes,
+  SortIncludes: Never,
+}
