@@ -28,13 +28,19 @@ public:
     template <NotParameterized T>
     void registerFactory(Generator<T> gen)
     {
-        _factoryMap[typeid(T)] = gen;
+        _factoryMap[typeid(T)] = { State::INSTANCE_GENERATOR, std::move(gen) };
     }
 
     template <Parameterized T>
     void registerFactory(ParameterizedGenerator<T> gen)
     {
-        _factoryMap[typeid(T)] = gen;
+        _factoryMap[typeid(T)] = { State::INSTANCE_GENERATOR, std::move(gen) };
+    }
+
+    template <class T>
+    void registerSingleton(Generator<T> gen)
+    {
+        _factoryMap[typeid(T)] = { State::SINGLETON_GENERATOR, std::move(gen) };
     }
 
     template <NotParameterized T>
@@ -44,7 +50,13 @@ public:
     }
 
     template <Parameterized T>
-    std::shared_ptr<T> resolve(typename T::Params&& params = {})
+    std::shared_ptr<T> resolve()
+    {
+        return resolve<T, Generator<T>>();
+    }
+
+    template <Parameterized T>
+    std::shared_ptr<T> resolve(typename T::Params&& params)
     {
         return resolve<T, ParameterizedGenerator<T>>(std::forward<typename T::Params>(params));
     }
@@ -56,24 +68,64 @@ public:
     }
 
 private:
+    enum class State
+    {
+        INSTANCE_GENERATOR,
+        SINGLETON_GENERATOR,
+        SINGLETON_INSTANCE,
+    };
+
+    struct Entry
+    {
+        State state;
+        std::any content;
+    };
+
     template <class T, class G, class... Ps>
     std::shared_ptr<T> resolve(Ps&&... args)
     {
-        if (!_factoryMap.contains(typeid(T)))
+        if (const auto i = _factoryMap.find(typeid(T)); i != _factoryMap.end())
+        {
+            auto& entry = i->second;
+
+            if (entry.state != State::INSTANCE_GENERATOR && sizeof...(Ps) > 0)
+                throw std::runtime_error { "Parameters passed in while resolving a singleton!" };
+            if (entry.state == State::INSTANCE_GENERATOR && Parameterized<T> && sizeof...(Ps) == 0)
+                throw std::runtime_error { "Parameters passed in while resolving an independent instance!" };
+
+            try
+            {
+                std::shared_ptr<T> ptr;
+                switch (entry.state)
+                {
+                    using enum State;
+                case INSTANCE_GENERATOR:
+                    ptr = std::any_cast<G>(entry.content)(std::forward<Ps>(args)...);
+                    break;
+                case SINGLETON_GENERATOR:
+                    ptr = std::any_cast<G>(entry.content)(std::forward<Ps>(args)...);
+                    entry.content = ptr;
+                    entry.state = SINGLETON_INSTANCE;
+                    break;
+                case SINGLETON_INSTANCE:
+                    ptr = std::any_cast<std::shared_ptr<T>>(entry.content);
+                    break;
+                }
+                return ptr;
+            }
+            catch (const std::bad_any_cast&)
+            {
+                throw std::runtime_error { "Could not resolve services mapped type\n from: ["
+                    + std::string { entry.content.type().name() } + "]\n to: [" + std::string { typeid(G).name() }
+                    + "]." };
+            }
+        }
+        else
+        {
             throw std::runtime_error { "Could not find generator for type [" + std::string { typeid(T).name() }
                 + "] in IoC container" };
-
-        try
-        {
-            return std::any_cast<G>(_factoryMap.at(typeid(T)))(std::forward<Ps>(args)...);
-        }
-        catch (const std::bad_any_cast&)
-        {
-            throw std::runtime_error { "Could not resolve services mapped type\n from: ["
-                + std::string { _factoryMap.at(typeid(T)).type().name() } + "]\n to: ["
-                + std::string { typeid(G).name() } + "]." };
         }
     }
 
-    std::unordered_map<std::type_index, std::any> _factoryMap;
+    std::unordered_map<std::type_index, Entry> _factoryMap;
 };

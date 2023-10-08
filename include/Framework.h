@@ -10,7 +10,12 @@ class ComponentD
 public:
     virtual ~ComponentD() = default;
 
-    virtual std::string doProcessing() const { return "D"; }
+    virtual std::string doProcessing() const { return "D" + text; }
+
+    virtual void setText(std::string t) { text = std::move(t); }
+
+protected:
+    std::string text = "hello";
 };
 
 class ComponentC
