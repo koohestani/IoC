@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 
 #include "Container.h"
 
@@ -24,7 +25,7 @@ public:
 
     virtual std::string doProcessing() const { return _compD->doProcessing() + "-C"; }
 
-private:
+protected:
     std::shared_ptr<ComponentD> _compD;
 };
 
@@ -40,31 +41,39 @@ public:
 
     virtual std::string doProcessing() const { return _compC->doProcessing() + "-B"; }
 
-private:
+protected:
     std::shared_ptr<ComponentC> _compC;
 };
 
 class ComponentA
 {
 public:
+    struct Params
+    {
+        std::optional<std::string> str;
+    };
+
     virtual ~ComponentA() = default;
 
-    ComponentA(std::shared_ptr<ComponentB> compB)
+    ComponentA(std::shared_ptr<ComponentB> compB, Params params)
         : _compB { std::move(compB) }
+        , _str { params.str.value_or("default") }
     {
     }
 
-    virtual std::string doProcessing() const { return _compB->doProcessing() + "-A"; }
+    virtual std::string doProcessing() const { return _compB->doProcessing() + "-A[" + _str + "]"; }
 
-private:
+protected:
     std::shared_ptr<ComponentB> _compB;
+    std::string _str;
 };
 
 inline void bootFramework()
 {
     auto& ioc = Container::get();
 
-    ioc.registerFactory<ComponentA>([&] { return std::make_shared<ComponentA>(ioc.resolve<ComponentB>()); });
+    ioc.registerFactory<ComponentA>(
+        [&](ComponentA::Params params) { return std::make_shared<ComponentA>(ioc.resolve<ComponentB>(), params); });
     ioc.registerFactory<ComponentB>([&] { return std::make_shared<ComponentB>(ioc.resolve<ComponentC>()); });
     ioc.registerFactory<ComponentC>([&] { return std::make_shared<ComponentC>(ioc.resolve<ComponentD>()); });
     ioc.registerFactory<ComponentD>([] { return std::make_shared<ComponentD>(); });
